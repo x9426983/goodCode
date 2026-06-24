@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+    <bean id="mafkaProducer" class="com.meituan.mafka.client.bean.MafkaProducer" init-method="start" destroy-method="close" lazy-init="true">
+        <property name="namespace" value="com.sankuai.mafka.castle.daojiacommon"/>
+        <property name="appkey"
+                  value="com.sankuai.wmdrecsys.rechub.phfmixrec"/>
+        <property name="topic" value="topic_recom_model_link_info"/>
+
+    </bean>
+
+</beans>
