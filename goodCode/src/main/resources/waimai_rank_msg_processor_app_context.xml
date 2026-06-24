@@ -1,0 +1,509 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns="http://www.springframework.org/schema/beans"
+       xmlns:crane="http://code.dianping.com/schema/crane"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+       http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
+		 http://www.springframework.org/schema/context
+		 http://www.springframework.org/schema/context/spring-context-3.0.xsd
+         http://code.dianping.com/schema/crane
+         http://code.dianping.com/schema/crane/crane-1.0.xsd">
+
+    <crane:annotation-driven/>
+
+    <import resource="classpath:business_identity_mcc.xml"/>
+
+    <bean class="com.sankuai.meituan.waimai.util.jmonitor.JmonitorSpringBeanUtil"/>
+    <!--强制确定jmonitor的资源加载顺序-->
+    <bean class="com.sankuai.meituan.waimai.util.jmonitor.JmonitorInitializingBean">
+        <property name="configName" value="jmonitor.properties"/>
+    </bean>
+
+    <bean class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">
+        <property name="locations">
+            <list>
+                <value>classpath:/conf/config.properties</value>
+                <value>classpath:/conf/server.properties</value>
+                <value>classpath:traffic_rec_hub_client.properties</value>
+                <value>classpath:waimai_d_traffic_mix_rec_client.properties</value>
+            </list>
+        </property>
+    </bean>
+
+    <context:annotation-config/>
+    <context:component-scan
+            base-package="
+            com.sankuai.meituan.waimai.pdim;
+            com.sankuai.meituan.waimai.h3;
+            com.sankuai.meituan.waimai.rank.msg.processor;
+            com.sankuai.meituan.waimai.rank.kv.service.rank;
+            com.sankuai.meituan.business.identity;
+            com.sankuai.meituan.waimai.thrift.rank.msg.iface.impl"/>
+
+    <import resource="classpath:waimai_service_growth_awards_client.xml"/>
+    <import resource="classpath:waimai_service_poiquery_client.xml"/>
+    <import resource="classpath:conf/waimai_service_qualification_client.xml"/>
+    <import resource="classpath:waimaiConfig/waimai_service_promotion_client.xml"/>
+    <!--search-tair-->
+    <import resource="classpath*:group-d-waimaisearch-tair.xml"/>
+    <!--海纳数据服务-->
+    <import resource="classpath*:waimai_service_c_haina_client_context.xml" />
+    <import resource="classpath:tsp_product_bquery_client.xml"/>
+
+
+    <bean class="com.meituan.mafka.client.bean.MafkaConsumer" init-method="start" destroy-method="close">
+        <property name="namespace" value="waimai"/>
+        <property name="appkey" value="${octo.key}"/>
+        <property name="topic" value="mafka.waimai.ad.poitob.poi.update"/>
+        <property name="group" value="mafka.waimai.rank.rankmsg.poi.update"/>
+        <!--以上配置请到消费组页面定制化demo查看 线下：mq.test.sankuai.com, 线上：mq.sankuai.com-->
+        <property name="listener" ref="poiStatusMafkaConsumer"/>
+        <property name="className" value="java.lang.String"/>
+    </bean>
+
+    <!--超级便利店货架配置数据-->
+    <bean class="com.meituan.mafka.client.bean.MafkaConsumer" init-method="start" destroy-method="close">
+        <property name="namespace" value="waimai"/>
+        <property name="appkey" value="${octo.key}"/>
+        <property name="topic" value="com.sankuai.tsp.productlib.salecategory.topic.waimai"/>
+        <property name="group" value="mafka.waimai.rank.rankmsg.superStore.migConfig.update"/>
+        <property name="listener" ref="migConfigMafkaConsumer"/>
+        <property name="className" value="java.lang.String"/>
+    </bean>
+
+    <bean id="wmRankMsgThriftServicePublisher"
+          class="com.meituan.service.mobile.mtthrift.proxy.ThriftServerPublisher"
+          init-method="publish" destroy-method="destroy" lazy-init="false">
+        <property name="serviceInterface"
+                  value="com.sankuai.meituan.waimai.thrift.rank.msg.iface.WmRankMsgThriftIface"/>
+        <!-- 指定service接口类 -->
+        <property name="serviceImpl" ref="wmRankMsgThriftIfaceImpl"/>
+        <property name="selectorThreads" value="4"/>
+        <!-- 可不配置，默认4 -->
+        <property name="minWorkerThreads" value="20"/>
+        <!-- 可不配置，默认10 -->
+        <property name="port" value="9110"/>
+        <!-- 服务端口号 -->
+        <property name="daemon" value="true"/>
+        <!-- 是否后台线程，可不配置，默认值true -->
+        <property name="appKey" value="${octo.key}"/>
+        <!-- 设置appkey -->
+        <property name="clusterManager" value="${octo.clusterManager}"/>
+        <!-- 设置工作模式 -->
+        <property name="shutdownWaitTime" value="5"/>
+        <!-- 服务端延迟停止时间(秒)即优雅关闭，默认是10 -->
+        <property name="maxWorkerThreads" value="50"/>
+        <!-- 服务端最大线程数 -->
+        <!--<property name="authHandler" ref="defaultAuthHandler" />-->
+    </bean>
+
+
+    <bean id="springContextUtil" class="com.sankuai.meituan.waimai.rank.util.spring.SpringContextUtil"/>
+<!--    <bean class="com.sankuai.meituan.waimai.rank.service.lazycache.contanier.attr.VersionPeekPoiAttrAsyncCache"/>-->
+
+    <bean id="wmRecPhfProductDb" class="com.dianping.zebra.group.jdbc.GroupDataSource" init-method="init"
+          destroy-method="close">
+        <!-- 必配。指定唯一确定数据库的key-->
+        <property name="jdbcRef" value="waimairecsearch_wm_rec_phf_product"/>
+        <!-- 选配。指定底层使用的连接池类型，支持"c3p0","tomcat-jdbc","druid","hikaricp","dbcp2"和"dbcp"，推荐使用"druid"或者"dbcp2"，版本2.10.3之后默认值为"druid"，之前版本默认值为"c3p0" -->
+        <property name="poolType" value="druid"/>
+        <!-- 选配。指定连接池的最小连接数，默认值是5。 -->
+        <property name="minPoolSize" value="10"/>
+        <!-- 选配。指定连接池的最大连接数，默认值是20。 -->
+        <property name="maxPoolSize" value="50"/>
+        <!-- 选配。指定连接池的初始化连接数，默认值是5。 -->
+        <property name="initialPoolSize" value="10"/>
+        <!-- 选配。指定连接池的获取连接的超时时间，默认值是1000。 -->
+        <property name="checkoutTimeout" value="1000"/>
+        <property name="maxIdleTime" value="120"/>
+        <property name="acquireIncrement" value="1"/>
+        <property name="idleConnectionTestPeriod" value="60"/>
+        <property name="acquireRetryAttempts" value="30"/>
+        <property name="maxStatements" value="1"/>
+        <property name="maxStatementsPerConnection" value="20"/>
+        <property name="testConnectionOnCheckin" value="true"/>
+        <property name="testConnectionOnCheckout" value="true"/>
+    </bean>
+
+    <bean id="transactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+        <property name="dataSource" ref="wmRecPhfProductDb"/>
+    </bean>
+
+    <bean id="sqlSessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">
+        <property name="configLocation" value="classpath:mybatis-config.xml"/>
+        <property name="dataSource" ref="wmRecPhfProductDb"/>
+        <!-- 映射文件集合 -->
+        <property name="mapperLocations" value="classpath:mapper/*.xml"/>
+    </bean>
+
+    <!-- 自动扫描dao -->
+    <bean class="org.mybatis.spring.mapper.MapperScannerConfigurer">
+        <property name="annotationClass" value="org.springframework.stereotype.Repository"/>
+        <property name="basePackage" value="com.sankuai.meituan.waimai.rank.msg.processor.dao"/>
+        <property name="sqlSessionFactoryBeanName" value="sqlSessionFactory"/>
+    </bean>
+
+<!--    <bean id="wmProductThriftServiceAsync" class="com.meituan.service.mobile.mtthrift.proxy.ThriftClientProxy"-->
+<!--          destroy-method="destroy">-->
+<!--        <property name="serviceInterface" value="com.sankuai.meituan.waimai.thrift.service.WmProductThriftService"/> &lt;!&ndash; service接口名 &ndash;&gt;-->
+<!--        <property name="timeout" value="8000"/>-->
+<!--        <property name="serverDynamicWeight" value="true"/>-->
+<!--        <property name="clusterManager" value="OCTO"/>-->
+<!--        <property name="appKey"-->
+<!--                  value="#{T(com.sankuai.meituan.util.ConfigUtilAdapter).getString('octo.appkey', T(com.sankuai.meituan.util.ConfigUtilAdapter).getString('app.key'))}"/>-->
+<!--        <property name="remoteAppkey" value="com.sankuai.waimai.product"/>-->
+<!--        <property name="async" value="true"/>-->
+<!--        <property name="nettyIO" value="true"/>-->
+<!--        <property name="filterByServiceName" value="true"/>-->
+<!--    </bean>-->
+
+    <bean id="productMtThriftPoolConfig" class="com.meituan.service.mobile.mtthrift.client.pool.MTThriftPoolConfig">
+        <property name="normalSize" value="#{T(com.sankuai.meituan.util.ConfigUtilAdapter).getString('tsp_productretrieve_normalSize', 2)}"/>
+        <property name="initialSize" value="#{T(com.sankuai.meituan.util.ConfigUtilAdapter).getString('tsp_productretrieve_initialSize', 1)}"/>
+    </bean>
+
+    <bean id="productSpuQueryThriftService" class="com.meituan.service.mobile.mtthrift.proxy.ThriftClientProxy" destroy-method="destroy">
+        <property name="mtThriftPoolConfig" ref="productMtThriftPoolConfig"/>
+        <property name="serviceInterface" value="com.sankuai.tsp.product.bquery.thrift.service.ProductSpuQueryThriftService"/>
+        <property name="timeout" value="5000"/>
+        <property name="serverDynamicWeight" value="true"/>
+        <property name="clusterManager" value="OCTO"/>
+        <property name="appKey" value="#{T(com.sankuai.meituan.util.ConfigUtilAdapter).getString('octo.appkey', T(com.sankuai.meituan.util.ConfigUtilAdapter).getString('app.key'))}"/>
+        <property name="remoteAppkey" value="com.sankuai.product.bquery"/>
+        <property name="filterByServiceName" value="true"/>
+        <property name="nettyIO" value="true"/>
+    </bean>
+
+    <bean id="productSpuQueryAsyncThriftService" class="com.meituan.service.mobile.mtthrift.proxy.ThriftClientProxy" destroy-method="destroy">
+        <property name="mtThriftPoolConfig" ref="productMtThriftPoolConfig"/>
+        <property name="serviceInterface" value="com.sankuai.tsp.product.bquery.thrift.service.ProductSpuQueryThriftService"/>
+        <property name="timeout" value="5000"/>
+        <property name="serverDynamicWeight" value="true"/>
+        <property name="clusterManager" value="OCTO"/>
+        <property name="appKey" value="#{T(com.sankuai.meituan.util.ConfigUtilAdapter).getString('octo.appkey', T(com.sankuai.meituan.util.ConfigUtilAdapter).getString('app.key'))}"/>
+        <property name="remoteAppkey" value="com.sankuai.product.bquery"/>
+        <property name="filterByServiceName" value="true"/>
+        <property name="async" value="true"/>
+        <property name="nettyIO" value="true"/>
+    </bean>
+
+    <bean id="spuAsyncProductThriftService" class="com.meituan.service.mobile.mtthrift.proxy.ThriftClientProxy" destroy-method="destroy">
+        <property name="mtThriftPoolConfig" ref="productMtThriftPoolConfig"/>
+        <property name="serviceInterface" value="com.sankuai.tsp.product.op.thrift.service.SpuProductThriftService"/>
+        <property name="timeout" value="5000"/>
+        <property name="serverDynamicWeight" value="true"/>
+        <property name="clusterManager" value="OCTO"/>
+        <property name="appKey" value="#{T(com.sankuai.meituan.util.ConfigUtilAdapter).getString('octo.appkey', T(com.sankuai.meituan.util.ConfigUtilAdapter).getString('app.key'))}"/>
+        <property name="remoteAppkey" value="com.sankuai.product.op.server"/>
+        <property name="filterByServiceName" value="true"/>
+        <property name="async" value="true"/>
+        <property name="nettyIO" value="true"/>
+    </bean>
+
+    <bean id="hyperDBClientConfig" class="com.sankuai.meituan.waimai.hyperdb.client.ClientConfig">
+        <property name="localAppkey" value="#{T(com.sankuai.meituan.util.ConfigUtilAdapter).getString('octo.appkey', T(com.sankuai.meituan.util.ConfigUtilAdapter).getString('app.key'))}"/>
+        <property name="warmUpEnabled" value="true"/>
+        <property name="requestTimeoutMills" value="#{T(com.sankuai.meituan.util.ConfigUtilAdapter).getInt('hyperdb.request.timeout', 60)}"/>
+        <property name="connectTimeoutMills" value="#{T(com.sankuai.meituan.util.ConfigUtilAdapter).getInt('hyperdb.connect.timeout', 500)}"/>
+        <property name="testWhileIdle" value="true"/>
+        <property name="minIdle" value="#{T(com.sankuai.meituan.util.ConfigUtilAdapter).getInt('hyperdb.minIdle', 8)}"/>
+        <property name="maxActive" value="#{T(com.sankuai.meituan.util.ConfigUtilAdapter).getInt('hyperdb.maxActive', 128)}"/>
+        <property name="invokeHyperDbAllFutureTimeout" value="#{T(com.sankuai.meituan.util.ConfigUtilAdapter).getInt('hyperdb.invokeHyperDbAllFutureTimeout', 50)}"/>
+        <property name="maxConnections" value="#{T(com.sankuai.meituan.util.ConfigUtilAdapter).getInt('hyperdb.maxConnections', 128)}"/>
+        <property name="minIdleConnections" value="#{T(com.sankuai.meituan.util.ConfigUtilAdapter).getInt('hyperdb.minIdleConnections', 3)}"/>
+        <property name="connectKeepAliveEnable" value="#{T(com.sankuai.meituan.util.ConfigUtilAdapter).getBoolean('hyperdb.connectKeepAliveEnable', true)}"/>
+        <property name="rowSplitSize" value="#{T(com.sankuai.meituan.util.ConfigUtilAdapter).getInt('hyperdb.rowSplitSize', 500)}"/>
+    </bean>
+    <bean class="com.sankuai.meituan.waimai.hyperdb.client.visit.HyperDBPbClient">
+        <constructor-arg ref="hyperDBClientConfig"/>
+    </bean>
+
+    <bean class="com.meituan.mafka.client.bean.MafkaConsumer" init-method="start" destroy-method="close">
+        <property name="namespace" value="waimai"/>
+        <property name="appkey" value="${octo.key}"/>
+        <property name="topic" value="wmspecial_product_change_notification_spu"/>
+        <property name="group" value="wmspecial_product_change_notification_spu_4_wmdtraffic"/>
+        <property name="batchMessagesListener" ref="phfSpuInfoConsumer"/>
+        <property name="className" value="java.lang.String"/>
+        <property name="otherProperties">
+            <map>
+                <!-- 使用批量消费接口，不设置会变为普通消费 -->
+                <entry key="mafka.batch.recv" value="true"/>
+                <!--每批消费的最大条数为 1000，可选 default 100-->
+                <entry key="mafka.batch.recv.size" value="200"/>
+                <!-- 每批不到设置于的条数，最大等待时间为 1min，可选 default 1000ms -->
+                <entry key="mafka.batch.recv.timeout.ms" value="60000"/>
+            </map>
+        </property>
+    </bean>
+
+    <bean class="com.meituan.mafka.client.bean.MafkaConsumer" init-method="start" destroy-method="close">
+        <property name="namespace" value="com.sankuai.mafka.castle.daojiacommon"/>
+        <property name="appkey" value="${octo.key}"/>
+        <property name="topic" value="wmspecial_product_change_notification_marketplace_product_sku"/>
+        <property name="group" value="change_notification_marketplace_product_sku_for_rankmsg"/>
+        <property name="batchMessagesListener" ref="phfMarketplaceProductSkuInfoBatchConsumer"/>
+        <property name="className" value="java.lang.String"/>
+        <property name="otherProperties">
+            <map>
+                <!-- 使用批量消费接口，不设置会变为普通消费 -->
+                <entry key="mafka.batch.recv" value="true"/>
+                <!--每批消费的最大条数为 1000，可选 default 100-->
+                <entry key="mafka.batch.recv.size" value="200"/>
+                <!-- 每批不到设置于的条数，最大等待时间为 1min，可选 default 1000ms -->
+                <entry key="mafka.batch.recv.timeout.ms" value="60000"/>
+            </map>
+        </property>
+    </bean>
+
+    <bean class="com.meituan.mafka.client.bean.MafkaConsumer" init-method="start" destroy-method="close">
+        <property name="namespace" value="waimai"/>
+        <property name="appkey" value="${octo.key}"/>
+        <property name="topic" value="com.sankuai.tsp.product.change.event.product_mark_rel.wmspecial"/>
+        <property name="group" value="wmspecial_product_change_mark_rel_4_wmdtraffic"/>
+        <property name="batchMessagesListener" ref="phfMarkIdConsumer"/>
+        <property name="className" value="java.lang.String"/>
+        <property name="otherProperties">
+            <map>
+                <!-- 使用批量消费接口，不设置会变为普通消费 -->
+                <entry key="mafka.batch.recv" value="true"/>
+                <!--每批消费的最大条数为 1000，可选 default 100-->
+                <entry key="mafka.batch.recv.size" value="200"/>
+                <!-- 每批不到设置于的条数，最大等待时间为 1min，可选 default 1000ms -->
+                <entry key="mafka.batch.recv.timeout.ms" value="60000"/>
+            </map>
+        </property>
+    </bean>
+
+    <bean class="com.meituan.mafka.client.bean.MafkaConsumer" init-method="start" destroy-method="close">
+        <property name="namespace" value="com.sankuai.mafka.castle.daojiacommon"/>
+        <property name="appkey" value="${octo.key}"/>
+        <property name="topic" value="tsp_promotion_couponsell_actual_price_charge_notice"/>
+        <property name="group" value="mafka.waimai.rank.rankmsg.sqs.price"/>
+        <property name="batchMessagesListener" ref="sqsActPriceConsumer"/>
+        <property name="className" value="java.lang.String"/>
+        <property name="otherProperties">
+            <map>
+                <!-- 使用批量消费接口，不设置会变为普通消费 -->
+                <entry key="mafka.batch.recv" value="true"/>
+                <!--每批消费的最大条数为 1000，可选 default 100-->
+                <entry key="mafka.batch.recv.size" value="200"/>
+                <!-- 每批不到设置于的条数，最大等待时间为 1min，可选 default 1000ms -->
+                <entry key="mafka.batch.recv.timeout.ms" value="2000"/>
+            </map>
+        </property>
+    </bean>
+
+    <bean class="com.meituan.mafka.client.bean.MafkaConsumer" init-method="start" destroy-method="close">
+        <property name="namespace" value="com.sankuai.mafka.castle.daojiacommon"/>
+        <property name="appkey" value="${octo.key}"/>
+        <property name="topic" value="topic_recom_model_link_info"/>
+        <property name="group" value="mafka.waimai.rank.rankmsg.model.link"/>
+        <property name="listener" ref="modelResetConsumer"/>
+        <property name="className" value="java.lang.String"/>
+    </bean>
+
+
+    <bean id="hubClientConnectionPoolConfig"
+          class="com.meituan.service.mobile.mtthrift.client.pool.MTThriftPoolConfig">
+        <property name="maxActive" value="${rec.hub.client.pool.maxActive}"/>
+        <property name="maxIdle" value="${rec.hub.client.pool.maxIdle}"/>
+        <property name="minIdle" value="${rec.hub.client.pool.minIdle}"/>
+        <property name="maxWait" value="${rec.hub.client.pool.maxWait}"/>
+        <property name="testOnBorrow" value="${rec.hub.client.pool.testOnBorrow}"/>
+        <property name="testOnReturn" value="${rec.hub.client.pool.testOnReturn}"/>
+        <property name="testWhileIdle" value="${rec.hub.client.pool.testWhileIdle}"/>
+    </bean>
+
+    <bean id="recHubPhfService"
+          class="com.meituan.service.mobile.mtthrift.proxy.ThriftClientProxy"
+          destroy-method="destroy">
+        <property name="timeout" value="${rec.hub.client.io.timeout}"/>
+        <property name="connTimeout" value="${rec.hub.client.io.connTimeout}"/>
+        <property name="mtThriftPoolConfig" ref="hubClientConnectionPoolConfig"/>
+
+        <property name="serviceInterface"
+                  value="com.sankuai.meituan.waimai.rec.hub.client.RecHubService"/>
+        <!--        <property name="serverDynamicWeight" value="true"/>-->
+        <!-- 集群工作模式, 必须设置为octo -->
+        <!--<property name="clusterManager" value="octo"/>-->
+        <!-- 设置appkey -->
+        <property name="appKey" value="#{T(com.sankuai.meituan.util.ConfigUtilAdapter).getString('octo.appkey', T(com.sankuai.meituan.util.ConfigUtilAdapter).getString('app.key'))}"/>
+        <!-- 服务端appkey，由服务方提供 -->
+        <property name="remoteAppkey" value="com.sankuai.wmdrecsys.rechub.phfmixrec"/>
+        <property name="filterByServiceName" value="true"/>
+    </bean>
+
+    <bean id="recHubBListService"
+          class="com.meituan.service.mobile.mtthrift.proxy.ThriftClientProxy"
+          destroy-method="destroy">
+        <property name="timeout" value="${rec.hub.client.io.timeout}"/>
+        <property name="connTimeout" value="${rec.hub.client.io.connTimeout}"/>
+        <property name="mtThriftPoolConfig" ref="hubClientConnectionPoolConfig"/>
+
+        <property name="serviceInterface"
+                  value="com.sankuai.meituan.waimai.rec.hub.client.RecHubService"/>
+        <property name="appKey" value="#{T(com.sankuai.meituan.util.ConfigUtilAdapter).getString('octo.appkey', T(com.sankuai.meituan.util.ConfigUtilAdapter).getString('app.key'))}"/>
+        <!-- 服务端appkey，由服务方提供 -->
+        <property name="remoteAppkey" value="com.sankuai.wmdrecsys.rec.hub"/>
+        <property name="filterByServiceName" value="true"/>
+    </bean>
+
+    <bean id="recHubMedService"
+          class="com.meituan.service.mobile.mtthrift.proxy.ThriftClientProxy"
+          destroy-method="destroy">
+        <property name="timeout" value="${rec.hub.client.io.timeout}"/>
+        <property name="connTimeout" value="${rec.hub.client.io.connTimeout}"/>
+        <property name="mtThriftPoolConfig" ref="hubClientConnectionPoolConfig"/>
+
+        <property name="serviceInterface"
+                  value="com.sankuai.meituan.waimai.rec.hub.client.RecHubService"/>
+        <property name="appKey" value="#{T(com.sankuai.meituan.util.ConfigUtilAdapter).getString('octo.appkey', T(com.sankuai.meituan.util.ConfigUtilAdapter).getString('app.key'))}"/>
+        <!-- 服务端appkey，由服务方提供 -->
+        <property name="remoteAppkey" value="com.sankuai.wmdrecsys.rec.hub"/>
+        <property name="filterByServiceName" value="true"/>
+    </bean>
+
+    <bean id="recHubService"
+          class="com.meituan.service.mobile.mtthrift.proxy.ThriftClientProxy"
+          destroy-method="destroy">
+        <property name="timeout" value="${rec.hub.client.io.timeout}"/>
+        <property name="connTimeout" value="${rec.hub.client.io.connTimeout}"/>
+        <property name="mtThriftPoolConfig" ref="hubClientConnectionPoolConfig"/>
+
+        <property name="serviceInterface"
+                  value="com.sankuai.meituan.waimai.rec.hub.client.RecHubService"/>
+        <property name="appKey" value="#{T(com.sankuai.meituan.util.ConfigUtilAdapter).getString('octo.appkey', T(com.sankuai.meituan.util.ConfigUtilAdapter).getString('app.key'))}"/>
+        <!-- 服务端appkey，由服务方提供 -->
+        <property name="remoteAppkey" value="com.sankuai.wmdrecsys.rec.hub"/>
+        <property name="filterByServiceName" value="true"/>
+    </bean>
+
+    <bean id="mixRecClientConnectionPoolConfig"
+          class="com.meituan.service.mobile.mtthrift.client.pool.MTThriftPoolConfig">
+        <property name="maxActive" value="${tmr.client.pool.maxActive}"/>
+        <property name="maxIdle" value="${tmr.client.pool.maxIdle}"/>
+        <property name="minIdle" value="${tmr.client.pool.minIdle}"/>
+        <property name="maxWait" value="${tmr.client.pool.maxWait}"/>
+        <property name="testOnBorrow" value="${tmr.client.pool.testOnBorrow}"/>
+        <property name="testOnReturn" value="${tmr.client.pool.testOnReturn}"/>
+        <property name="testWhileIdle" value="${tmr.client.pool.testWhileIdle}"/>
+    </bean>
+
+    <bean id="mixRecService" class="com.meituan.service.mobile.mtthrift.proxy.ThriftClientProxy" destroy-method="destroy">
+        <property name="timeout" value="${tmr.client.io.timeout}"/>
+        <property name="connTimeout" value="${tmr.client.io.connTimeout}"/>
+        <property name="mtThriftPoolConfig" ref="mixRecClientConnectionPoolConfig"/>
+
+        <property name="serviceInterface" value="com.sankuai.meituan.waimai.d.traffic.mix_rec.client.WmMixRecServiceThrift"/>
+        <property name="appKey" value="#{T(com.sankuai.meituan.util.ConfigUtilAdapter).getString('octo.appkey', T(com.sankuai.meituan.util.ConfigUtilAdapter).getString('app.key'))}"/>
+        <property name="remoteAppkey" value="com.sankuai.wmdrank.mixrec"/>
+        <property name="filterByServiceName" value="true"/>
+    </bean>
+
+
+    <bean class="com.meituan.mafka.client.bean.MafkaConsumer" init-method="start" destroy-method="close">
+        <property name="namespace" value="com.sankuai.mafka.castle.daojiacommon"/>
+        <property name="appkey" value="${octo.key}"/>
+        <property name="topic" value="tsp_promotion_phf_actual_price_charge_notice"/>
+        <property name="group" value="phf_actual_price_charge_notice"/>
+        <property name="listener" ref="phfBPriceInfoConsumer"/>
+        <property name="className" value="java.lang.String"/>
+    </bean>
+
+    <bean class="com.meituan.mafka.client.bean.MafkaConsumer" init-method="start" destroy-method="close">
+        <property name="namespace" value="waimai"/>
+        <property name="appkey" value="${octo.key}"/>
+        <property name="topic" value="wmspecial_product_change_notification_sku"/>
+        <property name="group" value="phf_sku_status_info_change_notice"/>
+        <property name="listener" ref="phfSkuStatusChangeConsumer"/>
+        <property name="className" value="java.lang.String"/>
+    </bean>
+
+    <bean class="com.meituan.mafka.client.bean.MafkaConsumer" init-method="start" destroy-method="close">
+        <property name="namespace" value="com.sankuai.mafka.castle.daojiacommon"/>
+        <property name="appkey" value="${octo.key}"/>
+        <property name="topic" value="wmspecial_product_change_notification_marketplace_product_sku"/>
+        <property name="group" value="phf_sku_self_field_status_info_change_notice"/>
+        <property name="listener" ref="phfSkuSelfFiledStatusChangeConsumer"/>
+        <property name="className" value="java.lang.String"/>
+    </bean>
+
+    <bean class="com.meituan.mafka.client.bean.MafkaConsumer" init-method="start" destroy-method="close">
+        <property name="namespace" value="com.sankuai.mafka.castle.daojiacommon"/>
+        <property name="appkey" value="${octo.key}"/>
+        <property name="topic" value="product_sale_category_city_group_rel_dts_topic"/>
+        <property name="group" value="product_sale_category_city_group_rel_dts_topic_4_rankmsg"/>
+        <property name="className" value="java.lang.String"/>
+        <property name="listener" ref="phfCityGroupRelConsumer"/>
+    </bean>
+
+    <bean class="com.meituan.mafka.client.bean.MafkaConsumer" init-method="start" destroy-method="close">
+        <property name="namespace" value="com.sankuai.mafka.castle.daojiacommon"/>
+        <property name="appkey" value="${octo.key}"/>
+        <property name="topic" value="mark_sale_category_rel_topic_dts"/>
+        <property name="group" value="mark_sale_category_rel_topic_dts_4_rankmsg"/>
+        <property name="className" value="java.lang.String"/>
+        <property name="listener" ref="phfMarkSaleCategoryRelConsumer"/>
+    </bean>
+
+    <bean class="com.meituan.mafka.client.bean.MafkaConsumer" init-method="start" destroy-method="close">
+        <property name="namespace" value="com.sankuai.mafka.castle.daojiacommon"/>
+        <property name="appkey" value="${octo.key}"/>
+        <property name="topic" value="product_sale_category_base_city_rel_dts_topic"/>
+        <property name="group" value="product_sale_category_base_city_rel_dts_topic_4_rankmsg"/>
+        <property name="className" value="java.lang.String"/>
+        <property name="listener" ref="phfBaseCityRelConsumer"/>
+    </bean>
+
+    <bean class="com.meituan.mafka.client.bean.MafkaConsumer" init-method="start" destroy-method="close">
+        <property name="namespace" value="waimai"/>
+        <property name="appkey" value="${octo.key}"/>
+        <property name="topic" value="com.sankuai.tsp.product.change.event.product_mark"/>
+        <property name="group" value="com.sankuai.tsp.product.change.event.product_mark_4_rankmsg"/>
+        <property name="className" value="java.lang.String"/>
+        <property name="listener" ref="phfProductMarkConsumer"/>
+    </bean>
+
+    <bean class="com.meituan.mafka.client.bean.MafkaConsumer" init-method="start" destroy-method="close">
+        <property name="namespace" value="com.sankuai.mafka.castle.daojiacommon"/>
+        <property name="appkey" value="${octo.key}"/>
+        <property name="topic" value="delete_product_sale_category_dts_topic"/>
+        <property name="group" value="delete_product_sale_category_dts_topic_4_rankmsg"/>
+        <property name="className" value="java.lang.String"/>
+        <property name="listener" ref="phfProductSaleCategoryConsumer"/>
+    </bean>
+
+    <!-- 分布式锁管理器 -->
+    <bean id="distributedLockManager"
+          class="com.meituan.hotel.dlm.service.impl.DistributedLockManager"
+          init-method="init" destroy-method="destroy" scope="singleton">
+        <constructor-arg value="tair" />       <!-- 可选value为："zk"、"tair"、"squirrel"；可配多个，按先后顺序第一个为主引擎，其他为备用引擎 -->
+        <constructor-arg value="zk" />
+        <constructor-arg value="squirrel" />
+        <property name="appKey" value="${octo.key}"/>        <!-- 必填。业务方设置的appKey，用于区分业务唯一的分布式锁，建议用octo的appKey -->
+        <property name="tairConfigModel" ref="tairConfigModel" />                <!-- 选填。如不填，将使用tair默认公用集群。 -->
+    </bean>
+
+    <!-- *******************************************Cellar集群配置***************************************************** -->
+    <!-- Cellar集群配置 -->
+    <bean id="tairConfigModel" class="com.meituan.hotel.dlm.model.TairConfigModel" >
+        <property name="area" value="1"/>                                        <!-- 必填。tair集群的area，可以联系tair接口人获取 -->
+        <property name="tairConfig" ref="tairConfig" /> <!-- 必填。mcc方式的Tair集群配置 -->
+    </bean>
+
+    <bean class="com.taobao.tair3.client.config.impl.SimpleTairConfig" id="tairConfig">
+        <constructor-arg value="${octo.key}"/>
+        <constructor-arg value="com.sankuai.tair.waimai.crank"/>
+        <constructor-arg ref="clientParameters"/>
+    </bean>
+
+    <bean id="clientParameters" class="com.taobao.tair3.client.config.impl.ClientParameters">
+        <!-- retryPercent -->
+        <constructor-arg value="20"/>
+        <!-- batchReturnPercent -->
+        <constructor-arg value="100"/>
+    </bean>
+
+</beans>

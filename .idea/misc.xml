@@ -6,6 +6,7 @@
       <list>
         <option value="$PROJECT_DIR$/goodCode/pom.xml" />
         <option value="$PROJECT_DIR$/worldTree/pom.xml" />
+        <option value="$PROJECT_DIR$/debug/pom.xml" />
       </list>
     </option>
   </component>
