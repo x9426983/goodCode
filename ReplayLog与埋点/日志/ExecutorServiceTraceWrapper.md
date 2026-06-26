@@ -1,14 +1,22 @@
 # ExecutorServiceTraceWrapper
-ExecutorServiceTraceWrapper 是标准装饰器模式的教科书实现——它和 ThreadPoolExecutor 实现同一个接口，
-在 submit 时用 forFork() 在主线程拍一份上下文快照，用 doFork() 在工作线程还原，
-本质是手动把 ThreadLocal 变量跨线程搬运，让异步任务的日志和监控能自动归属到触发它的那次用户请求上。
+## 在本项目中的具体实例
 ```markdown
-// 在本项目中的具体实例：
 // FutureTaskThreadPool.java
 new ExecutorServiceTraceWrapper(      // ← 外层装饰器
     new ThreadPoolExecutor(...)        // ← 内层真实线程池
 )
 ```
+ExecutorServiceTraceWrapper 和 ThreadPoolExecutor 实现同一个接口，
+在 submit 时用 forFork() 在主线程拍一份上下文快照，用 doFork() 在工作线程还原，
+本质是手动把 ThreadLocal 变量跨线程搬运，让异步任务的日志和监控能自动归属到触发它的那次用户请求上。
+```plantuml
+两者的分工边界总结：
+// Wrapper 把包装好的任务交给 ThreadPoolExecutor
+return m_executorService.submit(CatTraceCallable.get(task, p));
+//                              ↑ 到这里 Wrapper 的活就做完了
+//     ↑ 这里往后全是 ThreadPoolExecutor 的事
+```
+
 ## 源码级执行流程
 ```textmate
 以 submit(Callable) 为例，完整调用链：
@@ -47,6 +55,30 @@ public V call() throws Exception {
     }
     // try-with-resources 自动 close → 清理当前线程的 ThreadLocal
 }
+```
+## 交互
+```
+主线程
+  │
+  │  submit(原始task)
+  ▼
+ExecutorServiceTraceWrapper
+  │  我的活：给任务贴上 traceId 标签
+  │  task → CatTraceCallable(task, snapshot)
+  │
+  │  submit(贴了标签的task)
+  ▼
+ThreadPoolExecutor
+  │  我的活：找线程来跑这个任务
+  │  不管任务内容是什么，照样调度
+  │
+  │  thread.run(贴了标签的task)
+  ▼
+线程池线程
+     │  先恢复 traceId（标签的逻辑）
+     │  再执行业务代码（原始task）
+     │  最后清理 traceId
+
 ```
 ## 作用
 ThreadLocal 的跨线程陷阱
