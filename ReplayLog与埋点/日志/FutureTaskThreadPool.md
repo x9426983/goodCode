@@ -80,7 +80,7 @@ Thread (内核线程 1:1)         ← OS 调度
 ## ThreadPoolExecutor 内部状态机
 
                   shutdown()
-RUNNING ──────────────────────► SHUTDOWN ──┐
+RUNNING ────────────────────► SHUTDOWN ──┐
 │                                        │ 队列空 & 线程空
 │ shutdownNow()                          ▼
 └──────────────────────────► STOP ──► TIDYING ──► TERMINATED
