@@ -97,7 +97,33 @@ LoggerFactory.getLogger引入的包:
     </dependency>
 ```
 
-## 一次请求的数据是否全部写入同一个 RiverReplayLog 实例？
+## 实例的完整生命周期
+recall(request) 调用
+│
+├─ new ContextBase()
+│    └─ new RiverReplayLog()   ← 实例诞生，Map 字段空
+│
+├─ graphStrategy.start(contextBase)   ← 图执行（同步）
+│    └─ 各算子并发写入 replayLog 的 Map 字段
+│         originRecalls.put(...)
+│         extendData.put(...)
+│
+├─ recordReplayLog(contextBase)       ← 图执行完毕后触发
+│    └─ FutureTaskThreadPool.submit(lambda)   ← 异步提交，立即返回
+│         lambda 持有 contextBase 引用，阻止 GC
+│
+├─ return response                    ← 主线程返回给调用方
+│
+└─ [异步线程] lambda 执行
+├─ replayLog.initBaseInfo(contextBase)   ← 补充基础字段
+├─ replayLogger.info(replayLogStr)        ← 写入日志
+└─ lambda 结束，contextBase 引用释放
+└─ ContextBase & RiverReplayLog 等待 GC 回收  ← 实例消亡
+
+关键点：主线程 return response 时，实例并没有立刻消亡。异步 lambda 持有 contextBase 引用，直到日志写完，JVM 才能回收。这意味着极端情况下线程池积压时，大量请求的 RiverReplayLog 会同时驻留内存。
+
+## 一些问题
+### 一次请求的数据是否全部写入同一个 RiverReplayLog 实例？
 是的，整个请求生命周期共享同一个实例。 原因在于生命周期与 ContextBase 完全绑定, RiverReplayLog在ContextBase的构造函数中初始化
 ContextBase 实现了 ExecutionEnvironment 接口，被作为执行环境传入图的所有算子，所以算子通过 contextBase.getReplayLog() 拿到的永远是同一个实例。【worldtree架构实现，能够让上下文在算子间共享】
 这样设计的原因是聚合：一次推荐请求跨越几十个算子，日志需要汇总成一条完整的链路记录，而不是每个算子各打各的。
