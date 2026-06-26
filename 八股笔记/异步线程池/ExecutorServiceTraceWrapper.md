@@ -1,24 +1,3 @@
-# 什么是装饰器模式（结合源码）
-装饰器模式的核心：用同一个接口包裹另一个实现，在不改变原对象的前提下，透明地增强其功能，提供比继承更灵活的扩展方式。
-
-         «interface»
-        ExecutorService
-         ┌──────────┐
-         │ submit() │
-         │ execute()│
-         │shutdown()│
-         └────┬─────┘
-              │ 同一接口，两种实现
-┌─────────────┴──────────────────┐
-│                             │
-ThreadPoolExecutor    CatExecutorServiceTraceWrapper
-（真正干活的）         （包裹在外面，增强功能的）
-│
-持有 ThreadPoolExecutor 引用
-所有方法都委托给它执行
-提交前：注入 Trace 上下文
-
-
 # ExecutorServiceTraceWrapper
 ExecutorServiceTraceWrapper 是标准装饰器模式的教科书实现——它和 ThreadPoolExecutor 实现同一个接口，
 在 submit 时用 forFork() 在主线程拍一份上下文快照，用 doFork() 在工作线程还原，
