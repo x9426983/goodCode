@@ -6,10 +6,14 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
-        <module name="tree" />
         <module name="goodCode" />
+        <module name="graphManage" />
         <module name="debug" />
       </profile>
     </annotationProcessing>
+    <bytecodeTargetLevel>
+      <module name="graphManage" target="17" />
+      <module name="tree" target="17" />
+    </bytecodeTargetLevel>
   </component>
 </project>

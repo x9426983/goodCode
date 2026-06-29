@@ -9,6 +9,7 @@
         <option value="$PROJECT_DIR$/debug/pom.xml" />
         <option value="$PROJECT_DIR$/tree/pom.xml" />
         <option value="$PROJECT_DIR$/graphManage/pom.xml" />
+        <option value="$PROJECT_DIR$/LC/pom.xml" />
       </list>
     </option>
   </component>
