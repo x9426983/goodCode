@@ -1,4 +1,4 @@
-package org.example.FIFO;
+package org.example.FIFO与LIFO;
 
 import com.dianping.cat.Cat;
 import com.sankuai.meituan.waimai.recsys.engineering.itemcf.ParamUtil;
@@ -35,9 +35,9 @@ import java.util.concurrent.atomic.AtomicInteger;
                 @Output(type = Table.class, desc = "位次调整后的商品表")
         }
 )
-public class Sg1DaySpuAdjuster extends SyncInput2Op<Table, Map<Long, Integer>> {
+public class FIFO_Sg1DaySpuAdjuster extends SyncInput2Op<Table, Map<Long, Integer>> {
 
-    private static final Logger logger = LoggerFactory.getLogger(Sg1DaySpuAdjuster.class);
+    private static final Logger logger = LoggerFactory.getLogger(FIFO_Sg1DaySpuAdjuster.class);
 
     private static final String PARAM_DEMOTE_STEP = "demoteStep";
     private static final int DEFAULT_DEMOTE_STEP = 6;
